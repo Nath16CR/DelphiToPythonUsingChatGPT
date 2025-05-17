@@ -1,10 +1,13 @@
 import base64
+from OpenAiCache import OpenAiCache
 from Configuration import Configuration
 from Helper import Utils
 from GitHubClient import GitHubClient
 from OpenAiClient import OpenAiClient
 
+
 config = Configuration()
+openAiCache=OpenAiCache(config.openai_api_key)
 git_hub_client = GitHubClient(config)
 openAiClient = OpenAiClient(config)
 
@@ -15,7 +18,7 @@ def ProcessFiles(files_to_process, instruction, gpt_model, input_file_type, outp
       if git_response.status_code == 200:
         file_content = Utils.DecodeFromBase64(git_response)
         print(f"Sending {files_to_process} to gpt")
-        chat_result = openAiClient.SendToGpt(file_content, instruction, gpt_model)
+        chat_result = openAiClient.SendToGpt(file_content, instruction, gpt_model, [])
         if chat_result.status_code == 200:
           chat_result = chat_result.json()['choices'][0]['message']['content']
           git_hub_client.SendToGitHub(chat_result, file_name, output_file_type, time_stamp)
@@ -71,9 +74,13 @@ def ExecuteProcessor(gpt_model = "gpt-4-turbo", input_file_type = ".dpr", output
 
 def RelayMessageToGPT(message, code):
   decoded_code = base64.b64decode(code).decode("utf-8")
-  chat_result = openAiClient.SendToGpt(decoded_code, message, "gpt-4-turbo")
+  history = openAiCache.LoadJson()
+  chat_result = openAiClient.SendToGpt(decoded_code, message, "gpt-4-turbo", history)
+  
   if chat_result.status_code == 200:
     chat_result = chat_result.json()['choices'][0]['message']['content']
+    history.append({"role": "assistant", "content": chat_result})
+    openAiCache.SaveJson(history)
   else:
     chat_result = chat_result.text
   return chat_result
